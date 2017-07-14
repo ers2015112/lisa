@@ -16,10 +16,14 @@
 
 package controllers
 
+import config.LisaAuthConnector
 import connectors.{DesConnector, TaxEnrolmentConnector}
+import controllers.auth.AuthorisationFailure
 import play.api.Logger
 import play.api.libs.json.{JsValue, Json}
 import play.api.mvc._
+import uk.gov.hmrc.auth.core.AuthProvider.GovernmentGateway
+import uk.gov.hmrc.auth.core._
 import uk.gov.hmrc.play.http.HeaderCarrier
 import uk.gov.hmrc.play.microservice.controller.BaseController
 
@@ -27,16 +31,22 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
 import scala.util.control.NonFatal
 
-class ROSMController extends BaseController {
+class ROSMController extends BaseController with AuthorisedFunctions with AuthorisationFailure {
 
+  val authConnector: AuthConnector = LisaAuthConnector
   val connector: DesConnector = DesConnector
   val enrolmentConnector: TaxEnrolmentConnector = TaxEnrolmentConnector
 
   def register(utr: String): Action[AnyContent] = Action.async { implicit request =>
-    performRegister(utr)(request)
+    authorised(AffinityGroup.Organisation and AuthProviders(GovernmentGateway)) {
+      performRegister(utr)(request)
+    } recoverWith {
+      handleFailure
+    }
+
   }
 
-  private def performRegister(utr: String)(implicit request:Request[AnyContent]): Future[Result] = {
+  private def performRegister(utr: String)(implicit request: Request[AnyContent]): Future[Result] = {
     connector.register(utr, request.body.asJson.get).map { response =>
       Logger.info(s"The connector has returned ${response.status} for $utr")
       Results.Status(response.status)(response.body)
@@ -45,7 +55,16 @@ class ROSMController extends BaseController {
     case _ => InternalServerError("""{"code":"INTERNAL_SERVER_ERROR","reason":"Dependent systems are currently not responding"}""")
   }
 
-  def submitSubscription(utr: String, lisaManagerRef:String): Action[AnyContent] = Action.async { implicit request =>
+
+  def submitSubscription(utr: String, lisaManagerRef: String): Action[AnyContent] = Action.async { implicit request =>
+    authorised(AffinityGroup.Organisation and AuthProviders(GovernmentGateway)) {
+      performSubmitSubscription(utr, lisaManagerRef)
+    } recoverWith {
+      handleFailure
+    }
+  }
+
+  private def performSubmitSubscription(utr: String, lisaManagerRef: String)(implicit request: Request[AnyContent]): Future[Result] = {
     val requestJson: JsValue = request.body.asJson.get
 
     connector.subscribe(lisaManagerRef, requestJson).flatMap { response =>
@@ -62,7 +81,7 @@ class ROSMController extends BaseController {
         }
       }
     } recover {
-      case NonFatal(ex:Throwable) => {
+      case NonFatal(ex: Throwable) => {
         Logger.info(s"submitSubscription: Failed - ${ex.getMessage}")
         InternalServerError("""{"code":"INTERNAL_SERVER_ERROR","reason":"Dependent systems are currently not responding"}""")
       }
@@ -80,5 +99,4 @@ class ROSMController extends BaseController {
       }
     }
   }
-
 }

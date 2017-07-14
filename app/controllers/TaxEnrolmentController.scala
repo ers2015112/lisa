@@ -19,8 +19,8 @@ package controllers
 
 import config.LisaAuthConnector
 import connectors.TaxEnrolmentConnector
+import controllers.auth.AuthorisationFailure
 import play.api.Logger
-import play.api.libs.json.Json
 import play.api.mvc._
 import uk.gov.hmrc.auth.core.AuthProvider.GovernmentGateway
 import uk.gov.hmrc.auth.core.{AuthProviders, _}
@@ -28,9 +28,8 @@ import uk.gov.hmrc.play.http.HeaderCarrier
 import uk.gov.hmrc.play.microservice.controller.BaseController
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
 
-class TaxEnrolmentController extends BaseController with AuthorisedFunctions {
+class TaxEnrolmentController extends BaseController with AuthorisedFunctions with AuthorisationFailure {
 
   val authConnector: AuthConnector = LisaAuthConnector
 
@@ -40,24 +39,20 @@ class TaxEnrolmentController extends BaseController with AuthorisedFunctions {
   def getSubscriptionsForGroupId(groupId: String): Action[AnyContent] = Action.async {
     implicit request =>
       authorised(AffinityGroup.Organisation and AuthProviders(GovernmentGateway)) {
-        handleSuccess(groupId)
+        performGetSubscriptions(groupId)
       } recoverWith {
         handleFailure
       }
   }
 
-  private def handleFailure(implicit request: Request[_]) = PartialFunction[Throwable, Future[Result]] {
-    case ex: AuthorisationException => Future.successful(Unauthorized("""{"code":"UNAUTHORIZED","reason":"Unauthorised"}"""))
-  }
 
-  private def handleSuccess(groupId: String)(implicit request: Request[_]) = {
+  private def performGetSubscriptions(groupId: String)(implicit request: Request[_]) = {
     connector.enrolmentStatus(groupId)(hc).map {
       response =>
-        Logger.info(s"The connector has returned ${response.status} for $groupId")
-        Results.Status(response.status)(response.body)
+      Logger.info(s"The connector has returned ${response.status} for $groupId")
+      Results.Status(response.status)(response.body)
     } recover {
       case _ => InternalServerError("""{"code":"INTERNAL_SERVER_ERROR","reason":"Dependent systems are currently not responding"}""")
     }
   }
-
 }

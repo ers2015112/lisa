@@ -16,22 +16,21 @@
 
 package controllers
 
-import com.sun.scenario.effect.impl.sw.java.JSWBlend_EXCLUSIONPeer
+import config.LisaAuthConnector
 import connectors.{DesConnector, TaxEnrolmentConnector}
-import org.scalatest.{BeforeAndAfter, BeforeAndAfterEach}
+import org.mockito.Matchers._
+import org.mockito.Mockito._
+import org.scalatest.BeforeAndAfterEach
 import org.scalatest.mock.MockitoSugar
 import org.scalatestplus.play.{OneAppPerSuite, PlaySpec}
-import org.mockito.Mockito._
-
-import scala.concurrent.Future
+import play.api.libs.json.Json
+import play.api.mvc.{AnyContentAsJson, Result}
 import play.api.test.Helpers._
 import play.api.test._
-import org.mockito.Matchers._
-import play.api.libs.json.{JsValue, Json}
-import play.api.mvc.{AnyContentAsJson, Result}
 import uk.gov.hmrc.play.http.{HeaderCarrier, HttpResponse, Upstream4xxResponse}
 
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 import scala.io.Source
 
 
@@ -42,6 +41,7 @@ class ROSMControllerSpec extends PlaySpec
   implicit val hc:HeaderCarrier = HeaderCarrier()
 
   override def beforeEach(): Unit = {
+    reset(mockAuthConnector)
     reset(mockDesConnector)
   }
 
@@ -53,6 +53,7 @@ class ROSMControllerSpec extends PlaySpec
 
     "return a 200 ok response" when {
       "everything is valid and no errors are thrown" in {
+        when(mockAuthConnector.authorise[Option[String]](any(),any())(any())).thenReturn(Future(null))
         when(mockDesConnector.register(any(),any())(any())).thenReturn(Future.successful(HttpResponse(OK,Some(Json.parse("{}")))))
 
         doRegister() { res =>
@@ -63,6 +64,7 @@ class ROSMControllerSpec extends PlaySpec
 
     "return a 400 error response with Invalid UTR as the response code" when {
       "the connector returns a 400 response" in {
+        when(mockAuthConnector.authorise[Option[String]](any(),any())(any())).thenReturn(Future(null))
         when(mockDesConnector.register(any(),any())(any())).thenReturn(Future.successful(HttpResponse(BAD_REQUEST,Some(Json.parse(regErrorJson)))))
 
         doRegister() { res =>
@@ -74,6 +76,7 @@ class ROSMControllerSpec extends PlaySpec
 
     "return a 500 error response" when {
       "the connector returns an error" in {
+        when(mockAuthConnector.authorise[Option[String]](any(),any())(any())).thenReturn(Future(null))
         when(mockDesConnector.register(any(),any())(any())).thenReturn(Future.failed(new Exception("Error")))
 
         doRegister() { res =>
@@ -89,6 +92,8 @@ class ROSMControllerSpec extends PlaySpec
 
     "return a 200 ok response with the subscriptionId" when {
       "everything is valid and no errors are thrown" in {
+        when(mockAuthConnector.authorise[Option[String]](any(),any())(any())).thenReturn(Future(null))
+
         when(mockEnrolmentConnector.subscribe(any(), any())(any())).
           thenReturn(Future.successful(HttpResponse(NO_CONTENT)))
 
@@ -105,6 +110,8 @@ class ROSMControllerSpec extends PlaySpec
     "return a 500 internal server error response" when {
 
       "the call to des fails" in {
+        when(mockAuthConnector.authorise[Option[String]](any(),any())(any())).thenReturn(Future(null))
+
         when(mockEnrolmentConnector.subscribe(any(), any())(any())).
           thenReturn(Future.successful(HttpResponse(NO_CONTENT)))
 
@@ -118,6 +125,8 @@ class ROSMControllerSpec extends PlaySpec
       }
 
       "the call to des returns an unexpected status code" in {
+        when(mockAuthConnector.authorise[Option[String]](any(),any())(any())).thenReturn(Future(null))
+
         when(mockEnrolmentConnector.subscribe(any(), any())(any())).
           thenReturn(Future.successful(HttpResponse(NO_CONTENT)))
 
@@ -131,6 +140,8 @@ class ROSMControllerSpec extends PlaySpec
       }
 
       "the call to tax enrolments fails" in {
+        when(mockAuthConnector.authorise[Option[String]](any(),any())(any())).thenReturn(Future(null))
+
         when(mockEnrolmentConnector.subscribe(any(), any())(any())).
           thenReturn(Future.failed(Upstream4xxResponse("Bad Request", BAD_REQUEST, BAD_REQUEST)))
 
@@ -144,6 +155,9 @@ class ROSMControllerSpec extends PlaySpec
       }
 
       "the call to tax enrolments returns an unexpected status code" in {
+
+        when(mockAuthConnector.authorise[Option[String]](any(),any())(any())).thenReturn(Future(null))
+
         when(mockEnrolmentConnector.subscribe(any(), any())(any())).
           thenReturn(Future.successful(HttpResponse(OK, responseString = Some("A 204 (No Content) the only valid response"))))
 
@@ -157,6 +171,9 @@ class ROSMControllerSpec extends PlaySpec
       }
 
       "the response from des does not contain a subscriptionId" in {
+
+        when(mockAuthConnector.authorise[Option[String]](any(),any())(any())).thenReturn(Future(null))
+
         when(mockEnrolmentConnector.subscribe(any(), any())(any())).
           thenReturn(Future.successful(HttpResponse(NO_CONTENT)))
 
@@ -187,10 +204,12 @@ class ROSMControllerSpec extends PlaySpec
 
   private val mockDesConnector = mock[DesConnector]
   private val mockEnrolmentConnector = mock[TaxEnrolmentConnector]
+  private val mockAuthConnector = mock[LisaAuthConnector]
 
   private val SUT = new ROSMController {
     override val connector: DesConnector = mockDesConnector
     override val enrolmentConnector: TaxEnrolmentConnector = mockEnrolmentConnector
+    override val authConnector: LisaAuthConnector = mockAuthConnector
   }
 
 }

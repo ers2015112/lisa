@@ -28,9 +28,10 @@ import play.api.test.Helpers._
 import play.api.test._
 import uk.gov.hmrc.auth.core.AuthConnector
 import uk.gov.hmrc.play.http.{HeaderCarrier, HttpResponse, Upstream4xxResponse}
+import config.LisaAuthConnector
 
 import scala.concurrent.Future
-
+import scala.concurrent.ExecutionContext.Implicits.global
 
 class TaxEnrolmentControllerSpec extends PlaySpec
   with MockitoSugar
@@ -40,11 +41,13 @@ class TaxEnrolmentControllerSpec extends PlaySpec
 
   override def beforeEach(): Unit = {
     reset(mockConnector)
+    reset(mockAuthconnecter)
   }
 
   "Get Enrolments for Group ID" should {
     "return the status and body as returned from the connector" when {
       "no errors occur" in {
+        when(mockAuthconnecter.authorise[Option[String]](any(),any())(any())).thenReturn(Future(null))
         when(mockConnector.enrolmentStatus(any())(any())).thenReturn(Future.successful(HttpResponse(OK, responseString = Some("test"))))
 
         val res = doGetSubscriptionsForGroupId()
@@ -55,6 +58,7 @@ class TaxEnrolmentControllerSpec extends PlaySpec
     }
     "return appropriate 500 internal server error response" when {
       "any errors occur" in {
+        when(mockAuthconnecter.authorise[Option[String]](any(),any())(any())).thenReturn(Future(null))
         when(mockConnector.enrolmentStatus(any())(any())).thenReturn(Future.failed(Upstream4xxResponse("fail", BAD_REQUEST, BAD_REQUEST)))
 
         val res = doGetSubscriptionsForGroupId()
@@ -70,8 +74,9 @@ class TaxEnrolmentControllerSpec extends PlaySpec
   }
 
   val mockConnector: TaxEnrolmentConnector = mock[TaxEnrolmentConnector]
-  val authconnecter: AuthConnector = mock[LisaAuthConnector]
+  val mockAuthconnecter: AuthConnector = mock[LisaAuthConnector]
   val SUT = new TaxEnrolmentController {
     override val connector: TaxEnrolmentConnector = mockConnector
+    override val authConnector: AuthConnector = mockAuthconnecter
   }
 }

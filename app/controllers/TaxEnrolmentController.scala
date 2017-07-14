@@ -20,21 +20,37 @@ package controllers
 import config.LisaAuthConnector
 import connectors.TaxEnrolmentConnector
 import play.api.Logger
+import play.api.libs.json.Json
 import play.api.mvc._
-import uk.gov.hmrc.auth.core.{AuthConnector, AuthorisedFunctions}
+import uk.gov.hmrc.auth.core.AuthProvider.GovernmentGateway
+import uk.gov.hmrc.auth.core.{AuthProviders, _}
 import uk.gov.hmrc.play.http.HeaderCarrier
 import uk.gov.hmrc.play.microservice.controller.BaseController
 
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.Future
 
 class TaxEnrolmentController extends BaseController with AuthorisedFunctions {
 
-  val authConnector:AuthConnector = LisaAuthConnector
+  val authConnector: AuthConnector = LisaAuthConnector
 
-  implicit val hc:HeaderCarrier = new HeaderCarrier
+  implicit val hc: HeaderCarrier = new HeaderCarrier
   val connector: TaxEnrolmentConnector = TaxEnrolmentConnector
 
-  def getSubscriptionsForGroupId(groupId: String): Action[AnyContent] = Action.async { implicit request =>
+  def getSubscriptionsForGroupId(groupId: String): Action[AnyContent] = Action.async {
+    implicit request =>
+      authorised(AffinityGroup.Organisation and AuthProviders(GovernmentGateway)) {
+        handleSuccess(groupId)
+      } recoverWith {
+        handleFailure
+      }
+  }
+
+  private def handleFailure(implicit request: Request[_]) = PartialFunction[Throwable, Future[Result]] {
+    case ex: AuthorisationException => Future.successful(Unauthorized("""{"code":"UNAUTHORIZED","reason":"Unauthorised"}"""))
+  }
+
+  private def handleSuccess(groupId: String)(implicit request: Request[_]) = {
     connector.enrolmentStatus(groupId)(hc).map {
       response =>
         Logger.info(s"The connector has returned ${response.status} for $groupId")
